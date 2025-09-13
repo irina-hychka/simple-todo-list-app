@@ -26,4 +26,4 @@ pip install -r requirements.txt
 python app.py
 
 ### Screenshot
-![App screenshot](/screnshots/app-screenshot.png)
+![App screenshot](./screenshots/app-screenshot.png)
