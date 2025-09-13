@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <title>To-Do List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+  </head>
+  <body>
+    <div class="app">
+      <h1>To-Do List</h1>
+
+      <form id="add-form" class="row">
+        <input
+          id="new-task"
+          type="text"
+          placeholder="Add a new task..."
+          required
+        />
+        <button type="submit">Add</button>
+      </form>
+
+      <div class="toolbar row">
+        <div class="filters">
+          <button class="filter-btn active" data-status="all">All</button>
+          <button class="filter-btn" data-status="active">Active</button>
+          <button class="filter-btn" data-status="completed">Completed</button>
+        </div>
+        <div class="bulk">
+          <button id="clear-completed">Clear Completed</button>
+          <button id="clear-all" class="danger">Clear All</button>
+        </div>
+      </div>
+
+      <ul id="tasks"></ul>
+    </div>
+
+    <!-- Toasts -->
+    <div id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

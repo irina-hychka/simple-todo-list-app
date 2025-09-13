@@ -1,0 +1,165 @@
+/* Base typography */
+body {
+  font-family: "Open Sans", sans-serif;
+}
+
+h1 {
+  font-family: "Anton", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Optional tweak: make the title stand out more */
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 20px;
+}
+
+/* Dark UI + Toasts */
+body {
+  margin: 0;
+  background: #0b0f14;
+  color: #e6edf3;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px;
+}
+.app {
+  width: 100%;
+  max-width: 720px;
+  background: #111825;
+  padding: 24px;
+  border-radius: 18px;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+}
+h1 {
+  margin: 0 0 16px 0;
+  text-align: center;
+}
+.row {
+  display: flex;
+  gap: 10px;
+}
+#add-form input {
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid #263042;
+  border-radius: 12px;
+  background: #0e141b;
+  color: #e6edf3;
+}
+#add-form button {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #1d72b8;
+  color: #fff;
+  cursor: pointer;
+}
+#add-form button:hover {
+  background: #2893e6;
+}
+
+.toolbar {
+  justify-content: space-between;
+  align-items: center;
+  margin: 10px 0 16px;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+}
+.filter-btn {
+  padding: 8px 12px;
+  border: 1px solid #2b3a4d;
+  background: #0e141b;
+  color: #e6edf3;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.filter-btn.active {
+  background: #1d72b8;
+  border-color: #1d72b8;
+}
+.bulk button {
+  padding: 8px 12px;
+  border: 1px solid #2b3a4d;
+  background: #0e141b;
+  color: #e6edf3;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.bulk .danger {
+  border-color: #6d1d1d;
+}
+.bulk button:hover {
+  background: #192232;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 12px 14px;
+  background: #0e141b;
+  border: 1px solid #263042;
+  border-radius: 12px;
+}
+li.done .title {
+  text-decoration: line-through;
+  color: #90a0b7;
+}
+.actions button {
+  margin-left: 6px;
+  background: #2b3a4d;
+  color: #e6edf3;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+.actions button:hover {
+  background: #3a4f6b;
+}
+
+/* Toasts */
+#toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+}
+.toast {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: all 0.3s;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #0e141b;
+  border: 1px solid #2b3a4d;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.success {
+  border-color: #1d6d2a;
+}
+.toast.error {
+  border-color: #6d1d1d;
+}
+.toast.info {
+  border-color: #2b3a4d;
+}
