@@ -62,4 +62,4 @@ python app.py
 ```
 
 ### Screenshot
-![App screenshot](app-screenshot.png)
+![App screenshot](screenshots/app-screenshot.png)
