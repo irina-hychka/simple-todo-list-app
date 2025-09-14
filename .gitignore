@@ -1,11 +1,33 @@
-# Python cache
+# Python cache / compiled files
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 
 # Virtual environments
+.venv/
 venv/
+ENV/
+env/
 
-# System files
+# SQLite database (local dev only)
+todo.db
+
+# Environment files (never commit secrets)
+.env
+
+# IDE/editor configs
+.vscode/
+.idea/
+
+# OS-specific junk
 .DS_Store
 
-# Database
-*.db
+# Logs
+*.log
+
+# Docker artifacts
+*.pid
+*.seed
+*.bak
+*.swp

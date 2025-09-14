@@ -1,55 +1,80 @@
-# app.py (v2 with filters & bulk delete)
-# -----------------------------------------------------------------------------
-# Minimal Flask + SQLAlchemy To-Do API with:
-# - SQLite (local) or any SQL DB via DATABASE_URL
-# - CRUD endpoints
-# - Status filters (all|active|completed)
-# - Bulk delete (all|completed|active)
-# - Health endpoint for simple checks / future load balancer probes
-#
-# Notes:
-# - Designed for local use first; can be lifted to AWS by switching DATABASE_URL.
-# - Keeps the code small and explicit; session handling is manual per endpoint.
-# -----------------------------------------------------------------------------
+"""
+app.py — Simple To-Do List Application (Flask + SQLAlchemy)
+
+Features:
+- REST API for tasks (CRUD)
+- Status filtering (all | active | completed)
+- Bulk delete by status
+- Health endpoint for liveness and DB checks
+- SQLite fallback for local/dev environments if DB is not configured
+
+Environment Variables:
+- DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (for PostgreSQL)
+- PORT (optional; defaults to 5000)
+
+Usage:
+    # Local SQLite (no env variables)
+    python app.py
+
+    # With PostgreSQL (RDS)
+    export DB_HOST=...
+    export DB_USER=...
+    export DB_PASSWORD=...
+    python app.py
+"""
 
 import os
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, text
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
+from sqlalchemy.exc import SQLAlchemyError
+
+# Optional: auto-load .env file for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Import connection string builder (env-based with SQLite fallback)
+from config import SQLALCHEMY_DATABASE_URI  # noqa: E402
+
+# Allow DATABASE_URL override (useful for Heroku-style environments)
+DATABASE_URI = os.getenv("DATABASE_URL", SQLALCHEMY_DATABASE_URI)
 
 # -----------------------------------------------------------------------------
-# Database configuration
+# Database setup
 # -----------------------------------------------------------------------------
-# If DATABASE_URL is not set, default to SQLite file in the project folder.
-# Examples:
-#   sqlite:///todo.db
-#   postgresql+psycopg2://user:pass@host:5432/dbname
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///todo.db")
-
 Base = declarative_base()
-engine = create_engine(DATABASE_URL, future=True)
+engine = create_engine(
+    DATABASE_URI,
+    future=True,
+    pool_pre_ping=True,   # validates connections before using
+    pool_recycle=300,     # refreshes connections periodically
+)
 
-# scoped_session gives us a thread-local session registry (safe for simple apps).
+# Thread-local scoped session registry
 SessionLocal = scoped_session(
     sessionmaker(bind=engine, autoflush=False, autocommit=False)
 )
 
 # -----------------------------------------------------------------------------
-# Flask application
+# Flask app initialization
 # -----------------------------------------------------------------------------
 app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URI
 
 
 class Task(Base):
     """
-    ORM entity for a simple to-do item.
+    ORM entity for a to-do item.
 
-    Fields:
-      - id (int, PK): unique identifier
-      - title (str): short human-readable task title (required, ≤ 255 chars)
-      - is_done (bool): completion flag (default: False)
-      - created_at (datetime, UTC): creation timestamp
+    Columns:
+    - id (int, PK): unique identifier
+    - title (str, ≤ 255 chars): task title (required)
+    - is_done (bool): completion flag (default: False)
+    - created_at (datetime): UTC creation timestamp
     """
 
     __tablename__ = "tasks"
@@ -59,149 +84,128 @@ class Task(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-# Create the schema if it does not exist (safe for local/dev use).
+# Auto-create schema if it doesn't exist (safe for dev/local use)
 Base.metadata.create_all(bind=engine)
 
-
 # -----------------------------------------------------------------------------
-# API: Queries
+# REST API Endpoints
 # -----------------------------------------------------------------------------
 @app.route("/api/tasks", methods=["GET"])
 def get_tasks():
     """
-    Return tasks with optional status filter.
+    Get tasks with optional status filtering.
 
     Query params:
-      - status: "all" (default) | "active" | "completed"
+        status: "all" (default), "active", or "completed"
 
-    Response:
-      200 OK
-      [
-        {"id": 1, "title": "...", "is_done": false, "created_at": "ISO8601"},
-        ...
-      ]
+    Returns:
+        200 OK, JSON list of tasks:
+        [
+            {"id": 1, "title": "...", "is_done": false, "created_at": "ISO8601"},
+            ...
+        ]
     """
     status = request.args.get("status", "all")
     db = SessionLocal()
     try:
         q = db.query(Task)
         if status == "active":
-            q = q.filter(Task.is_done == False)  # noqa: E712 (SQLAlchemy boolean)
+            q = q.filter(Task.is_done.is_(False))
         elif status == "completed":
-            q = q.filter(Task.is_done == True)  # noqa: E712
+            q = q.filter(Task.is_done.is_(True))
         tasks = q.order_by(Task.created_at.desc()).all()
-        return jsonify(
-            [
-                {
-                    "id": t.id,
-                    "title": t.title,
-                    "is_done": t.is_done,
-                    "created_at": t.created_at.isoformat(),
-                }
-                for t in tasks
-            ]
-        )
+        return jsonify([
+            {
+                "id": t.id,
+                "title": t.title,
+                "is_done": t.is_done,
+                "created_at": t.created_at.isoformat(),
+            } for t in tasks
+        ])
     finally:
-        # Ensure the session is always closed even if something goes wrong.
         db.close()
 
 
-# -----------------------------------------------------------------------------
-# API: Create
-# -----------------------------------------------------------------------------
 @app.route("/api/tasks", methods=["POST"])
 def add_task():
     """
     Create a new task.
 
     Request JSON:
-      { "title": "Buy milk" }
+        {"title": "Buy milk"}
 
     Validations:
-      - title is required and trimmed (non-empty)
+        - title is required, trimmed, non-empty
 
-    Responses:
-      200 OK with created task JSON
-      400 Bad Request if title missing/empty
+    Returns:
+        200 OK, created task JSON
+        400 Bad Request if validation fails
     """
     data = request.json or {}
     title = (data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "title required"}), 400
-
     db = SessionLocal()
     try:
         task = Task(title=title)
         db.add(task)
         db.commit()
-        db.refresh(task)  # populate autogenerated fields (id, created_at)
-        return jsonify(
-            {
-                "id": task.id,
-                "title": task.title,
-                "is_done": task.is_done,
-                "created_at": task.created_at.isoformat(),
-            }
-        )
+        db.refresh(task)
+        return jsonify({
+            "id": task.id,
+            "title": task.title,
+            "is_done": task.is_done,
+            "created_at": task.created_at.isoformat(),
+        })
     finally:
         db.close()
 
 
-# -----------------------------------------------------------------------------
-# API: Toggle
-# -----------------------------------------------------------------------------
 @app.route("/api/tasks/<int:task_id>/toggle", methods=["PATCH"])
 def toggle_task(task_id):
     """
-    Flip the 'is_done' flag for a given task.
+    Toggle completion status for a specific task.
 
     Path params:
-      - task_id (int)
+        task_id (int)
 
-    Responses:
-      200 OK with updated task JSON
-      404 Not Found if task does not exist
+    Returns:
+        200 OK with updated task JSON
+        404 Not Found if task does not exist
     """
     db = SessionLocal()
     try:
-        # .get(pk) is fine here (SQLAlchemy 2.x emits a deprecation warning for legacy loader
-        # patterns in some contexts; for small apps it's OK).
-        task = db.query(Task).get(task_id)
+        task = db.get(Task, task_id)
         if not task:
             return jsonify({"error": "not found"}), 404
         task.is_done = not task.is_done
         db.commit()
         db.refresh(task)
-        return jsonify(
-            {
-                "id": task.id,
-                "title": task.title,
-                "is_done": task.is_done,
-                "created_at": task.created_at.isoformat(),
-            }
-        )
+        return jsonify({
+            "id": task.id,
+            "title": task.title,
+            "is_done": task.is_done,
+            "created_at": task.created_at.isoformat(),
+        })
     finally:
         db.close()
 
 
-# -----------------------------------------------------------------------------
-# API: Delete (single)
-# -----------------------------------------------------------------------------
 @app.route("/api/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
     """
-    Delete a single task by id.
+    Delete a task by ID.
 
     Path params:
-      - task_id (int)
+        task_id (int)
 
-    Responses:
-      204 No Content on success
-      404 Not Found if task does not exist
+    Returns:
+        204 No Content on success
+        404 Not Found if task does not exist
     """
     db = SessionLocal()
     try:
-        task = db.query(Task).get(task_id)
+        task = db.get(Task, task_id)
         if not task:
             return jsonify({"error": "not found"}), 404
         db.delete(task)
@@ -211,67 +215,62 @@ def delete_task(task_id):
         db.close()
 
 
-# -----------------------------------------------------------------------------
-# API: Bulk delete
-# -----------------------------------------------------------------------------
 @app.route("/api/tasks", methods=["DELETE"])
 def bulk_delete():
     """
     Bulk delete tasks by status.
 
     Query params:
-      - status: "all" (default) | "completed" | "active"
+        status: "all" (default), "active", or "completed"
 
-    Responses:
-      200 OK
-      {"deleted": <int>}  # number of removed items
-
-    Notes:
-      - Uses a single SQL DELETE filtered by status when provided.
-      - synchronize_session=False is safe/performant for bulk operations.
+    Returns:
+        200 OK, {"deleted": <int>}
     """
     status = request.args.get("status", "all")
     db = SessionLocal()
     try:
         q = db.query(Task)
         if status == "active":
-            q = q.filter(Task.is_done == False)  # noqa: E712
+            q = q.filter(Task.is_done.is_(False))
         elif status == "completed":
-            q = q.filter(Task.is_done == True)  # noqa: E712
-        count = q.delete(synchronize_session=False)
+            q = q.filter(Task.is_done.is_(True))
+        deleted = q.delete(synchronize_session=False)
         db.commit()
-        return jsonify({"deleted": count})
+        return jsonify({"deleted": deleted})
     finally:
         db.close()
 
-
 # -----------------------------------------------------------------------------
-# Healthcheck & UI
+# Health check & UI
 # -----------------------------------------------------------------------------
 @app.route("/health")
 def health():
     """
-    Lightweight liveness probe.
+    Liveness/DB readiness probe.
 
     Returns:
-      200 OK with {"status": "ok"}
+        200 OK {"status": "ok"} if DB connection works
+        500 {"status": "db_error"} if DB query fails
     """
-    return {"status": "ok"}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok"}, 200
+    except SQLAlchemyError as e:
+        return {"status": "db_error", "detail": e.__class__.__name__}, 500
 
 
 @app.route("/")
 def index():
     """
-    Serve the main HTML page (frontend shell).
-    The UI (HTML/CSS/JS) consumes the JSON API endpoints above.
+    Serve the main UI template.
+    The UI consumes JSON API endpoints defined above.
     """
     return render_template("index.html")
 
-
 # -----------------------------------------------------------------------------
-# Entrypoint (dev)
+# Entrypoint
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    # For development: enables auto-reload & debug messages.
-    # In production behind a WSGI server (gunicorn/uwsgi), run without this block.
-    app.run(debug=True)
+    port = int(os.getenv("PORT", "5001"))
+    app.run(host="0.0.0.0", port=port, debug=True)
